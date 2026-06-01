@@ -6,7 +6,7 @@ on:
 
 jobs:
   deploy:
-    name: Deploy to VPS
+    name: Deploy
     runs-on: ubuntu-latest
 
     steps:
@@ -22,7 +22,7 @@ jobs:
           port: ${{ secrets.VPS_PORT || 22 }}
           script: |
             # Navigate to your deployment folder on the VPS
-            cd /var/www/codeaptor-server
+            cd /var/www/amz/codeaptor-server
             
             # Pull the latest changes from Github
             git pull origin main
