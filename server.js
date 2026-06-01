@@ -18,11 +18,15 @@ app.use(helmet());
 
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
+const corsOrigins = [
+  process.env.CLIENT_ORIGIN,
+  'https://5.189.147.108.nip.io',
+  'http://localhost:3000',
+  'http://localhost:5173',
+].filter(Boolean);
+
 app.use(cors({
-  origin: [
-    process.env.CLIENT_ORIGIN, // Dynamically allows your deployed Vercel frontend
-    'http://localhost:5173'    // Keeps your local development testing working
-  ],
+  origin: corsOrigins,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'svix-id', 'svix-timestamp', 'svix-signature'],
   credentials: true
