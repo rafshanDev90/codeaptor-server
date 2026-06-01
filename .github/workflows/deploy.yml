@@ -1,0 +1,32 @@
+name: CD - Deploy to VPS
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          script: |
+            # Navigate to your deployment folder on the VPS
+            cd /var/www/codeaptor-server
+            
+            # Pull the latest changes from Github
+            git pull origin main
+            
+            # Rebuild and restart the Docker services in the background
+            docker compose down
+            docker compose up -d --build

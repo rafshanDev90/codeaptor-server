@@ -11,6 +11,9 @@ import webhookRouter from './routes/webhook.routes.js';
 
 const app = express();
 
+// Trust first proxy for correct client IP detection behind reverse proxy
+app.set('trust proxy', 1);
+
 app.use(helmet());
 
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
@@ -41,7 +44,7 @@ app.use(clerkMiddleware());
 
 app.use('/api/v1/users', userRouter);
 
-app.all('*', (req, res) => {
+app.all('/*splat', (req, res) => {
   res.status(404).json({ status: 'fail', message: `Route ${req.originalUrl} not found` });
 });
 

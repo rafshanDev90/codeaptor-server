@@ -1,0 +1,13 @@
+123.45.67.89.sslip.io {
+    # Reverse proxy to the Express application running in the 'app' container
+    reverse_proxy app:3000
+
+    # Compress responses for better performance
+    encode gzip zstd
+
+    # Optional: Log requests to stdout for debugging
+    log {
+        output stdout
+        format json
+    }
+}
