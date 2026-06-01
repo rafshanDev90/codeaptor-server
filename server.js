@@ -19,9 +19,15 @@ app.use(helmet());
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
 app.use(cors({
-  origin: process.env.CLIENT_ORIGIN || 'http://localhost:3000',
-  credentials: true,
+  origin: [
+    process.env.CLIENT_ORIGIN, // Dynamically allows your deployed Vercel frontend
+    'http://localhost:5173'    // Keeps your local development testing working
+  ],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'svix-id', 'svix-timestamp', 'svix-signature'],
+  credentials: true
 }));
+
 
 const globalLimiter = rateLimit({
   windowMs: 60_000,
