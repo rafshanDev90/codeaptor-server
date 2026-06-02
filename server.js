@@ -8,6 +8,8 @@ import mongoose from 'mongoose';
 import { clerkMiddleware } from '@clerk/express';
 import userRouter from './routes/user.routes.js';
 import webhookRouter from './routes/webhook.routes.js';
+import clitoolRouter from './routes/clitool.routes.js';
+import adminRouter from './routes/admin.routes.js';
 
 const app = express();
 
@@ -22,7 +24,7 @@ const corsOrigins = [
   process.env.CLIENT_ORIGIN,
   'https://5.189.147.108.nip.io',
   'http://localhost:3000',
-  'http://localhost:5173',
+  'http://localhost:3001',
 ].filter(Boolean);
 
 app.use(cors({
@@ -53,6 +55,8 @@ app.use(express.json());
 app.use(clerkMiddleware());
 
 app.use('/api/v1/users', userRouter);
+app.use('/api/v1/cli-tools', clitoolRouter);
+app.use('/api/v1/admin', adminRouter);
 
 app.all('/*splat', (req, res) => {
   res.status(404).json({ status: 'fail', message: `Route ${req.originalUrl} not found` });
