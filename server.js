@@ -10,6 +10,7 @@ import userRouter from './routes/user.routes.js';
 import webhookRouter from './routes/webhook.routes.js';
 import clitoolRouter from './routes/clitool.routes.js';
 import adminRouter from './routes/admin.routes.js';
+import { logger } from './utils/logger.js';
 
 const app = express();
 
@@ -52,6 +53,10 @@ app.use('/api/v1/webhooks', webhookLimiter);
 
 app.use('/api/v1/webhooks', webhookRouter);
 app.use(express.json());
+app.use((req, res, next) => {
+  logger.info(`Request: ${req.method} ${req.originalUrl}`);
+  next();
+});
 app.use(clerkMiddleware());
 
 app.use('/api/v1/users', userRouter);
@@ -63,13 +68,10 @@ app.all('/*splat', (req, res) => {
 });
 
 app.use((err, req, res, next) => {
-  console.error(JSON.stringify({
-    message: err.message,
-    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined,
+  logger.error(`Error processing request: ${req.method} ${req.path}`, err, {
     path: req.path,
     method: req.method,
-    timestamp: new Date().toISOString(),
-  }));
+  });
 
   if (err.name === 'WebhookVerificationError') {
     return res.status(401).json({ status: 'fail', message: 'Invalid webhook signature' });
@@ -89,21 +91,26 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 3000;
 const MONGO_URI = process.env.MONGODB_URI || process.env.MONGO_URI || 'mongodb://localhost:27017/myapp';
 
+logger.info(`Starting server on port ${PORT}...`);
+logger.info(`Attempting to connect to MongoDB...`);
+
 mongoose.connect(MONGO_URI)
   .then(() => {
+    logger.info('Connected to MongoDB successfully.');
     const server = app.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
+      logger.info(`Server running on port ${PORT}`);
     });
 
     const gracefulShutdown = (signal) => {
-      console.log(`\n${signal} received. Shutting down gracefully...`);
+      logger.info(`${signal} received. Shutting down gracefully...`);
       server.close(() => {
         mongoose.connection.close(false).then(() => {
+          logger.info('MongoDB connection closed. Exiting process.');
           process.exit(0);
         });
       });
       setTimeout(() => {
-        console.error('Forced shutdown after 30s.');
+        logger.error('Forced shutdown after 30s.');
         process.exit(1);
       }, 30_000);
     };
@@ -112,6 +119,6 @@ mongoose.connect(MONGO_URI)
     process.on('SIGINT', () => gracefulShutdown('SIGINT'));
   })
   .catch((err) => {
-    console.error('MongoDB connection error:', err);
+    logger.error('MongoDB connection error during startup:', err);
     process.exit(1);
   });
