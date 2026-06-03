@@ -1,5 +1,5 @@
 import { getAuth, clerkClient } from '@clerk/express';
-import User from '../models/user.model.js';
+import * as userService from '../services/user.service.js';
 import { z } from 'zod';
 
 export const protectRoute = async (req, res, next) => {
@@ -9,12 +9,12 @@ export const protectRoute = async (req, res, next) => {
       return res.status(401).json({ message: 'Unauthorized - no valid session.' });
     }
 
-    let currentUser = await User.findOne({ clerkId: userId });
+    let currentUser = await userService.getUserByClerkId(userId);
 
     if (!currentUser) {
       const clerkUser = await clerkClient.users.getUser(userId);
       const name = [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(' ') || clerkUser.emailAddresses[0]?.emailAddress;
-      currentUser = await User.create({
+      currentUser = await userService.createUser({
         clerkId: userId,
         name,
         email: clerkUser.emailAddresses[0]?.emailAddress,
@@ -27,6 +27,7 @@ export const protectRoute = async (req, res, next) => {
     next(error);
   }
 };
+
 
 export const restrictTo = (...allowedRoles) => {
   return (req, res, next) => {

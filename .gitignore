@@ -2,3 +2,5 @@
 node_modules/
 .env
 scripts/make-admin.js
+seed-categories.js
+.gitignore

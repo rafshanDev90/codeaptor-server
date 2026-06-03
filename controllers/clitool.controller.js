@@ -1,6 +1,5 @@
 import { z } from 'zod';
-import { validate } from '../middlewares/auth.middlewares.js';
-import CliTool from '../models/clitool.model.js';
+import * as cliToolService from '../services/clitool.service.js';
 import Category from '../models/category.model.js';
 
 const urlOrEmpty = z.string().url().optional().or(z.literal(''));
@@ -42,24 +41,7 @@ export const updateCategorySchema = createCategorySchema.partial();
 
 export const getCliTools = async (req, res, next) => {
   try {
-    const { category, search, featured } = req.query;
-    const filter = { isActive: true };
-
-    if (category) filter.category = category;
-    if (featured === 'true') filter.isFeatured = true;
-    if (search) {
-      filter.$or = [
-        { displayName: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } },
-        { name: { $regex: search, $options: 'i' } },
-      ];
-    }
-
-    const tools = await CliTool.find(filter)
-      .populate('category', 'name slug')
-      .sort({ isFeatured: -1, createdAt: -1 })
-      .lean();
-
+    const tools = await cliToolService.getAllCliTools(req.query);
     res.json({ status: 'success', results: tools.length, data: { tools } });
   } catch (error) {
     next(error);
@@ -68,16 +50,12 @@ export const getCliTools = async (req, res, next) => {
 
 export const getCliToolBySlug = async (req, res, next) => {
   try {
-    const tool = await CliTool.findOne({ name: req.params.slug, isActive: true })
-      .populate('category', 'name slug')
-      .lean();
-
-    if (!tool) {
-      return res.status(404).json({ status: 'fail', message: 'CLI tool not found.' });
-    }
-
+    const tool = await cliToolService.getCliToolBySlug(req.params.slug);
     res.json({ status: 'success', data: { tool } });
   } catch (error) {
+    if (error.message === 'NOT_FOUND') {
+      return res.status(404).json({ status: 'fail', message: 'CLI tool not found.' });
+    }
     next(error);
   }
 };
@@ -94,24 +72,22 @@ export const getCategories = async (req, res, next) => {
 export const getAdminCliTools = async (req, res, next) => {
   try {
     const { page = '1', limit = '50' } = req.query;
-    const pageNum = Math.max(1, parseInt(page, 10) || 1);
-    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 50));
-    const skip = (pageNum - 1) * limitNum;
+    const pageNum = parseInt(page, 10) || 1;
+    const limitNum = parseInt(limit, 10) || 50;
 
-    const [tools, total] = await Promise.all([
-      CliTool.find()
-        .populate('category', 'name slug')
-        .populate('createdBy', 'name email')
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limitNum)
-        .lean(),
-      CliTool.countDocuments(),
-    ]);
+    const result = await cliToolService.getAdminTools(pageNum, limitNum);
 
     res.json({
       status: 'success',
-      data: { tools, pagination: { page: pageNum, limit: limitNum, total, pages: Math.ceil(total / limitNum) } },
+      data: { 
+        tools: result.tools, 
+        pagination: { 
+          page: pageNum, 
+          limit: limitNum, 
+          total: result.total, 
+          pages: result.pages 
+        } 
+      },
     });
   } catch (error) {
     next(error);
@@ -120,18 +96,12 @@ export const getAdminCliTools = async (req, res, next) => {
 
 export const createCliTool = async (req, res, next) => {
   try {
-    const data = req.body;
-
-    const categoryExists = await Category.findById(data.category);
-    if (!categoryExists) {
+    const tool = await cliToolService.createTool(req.body, req.user._id);
+    res.status(201).json({ status: 'success', data: { tool } });
+  } catch (error) {
+    if (error.message === 'CATEGORY_NOT_FOUND') {
       return res.status(400).json({ status: 'fail', message: 'Category not found.' });
     }
-
-    const tool = await CliTool.create({ ...data, createdBy: req.user._id });
-    const populated = await CliTool.findById(tool._id).populate('category', 'name slug').lean();
-
-    res.status(201).json({ status: 'success', data: { tool: populated } });
-  } catch (error) {
     if (error.code === 11000) {
       return res.status(409).json({ status: 'fail', message: 'A CLI tool with this name already exists.' });
     }
@@ -141,26 +111,15 @@ export const createCliTool = async (req, res, next) => {
 
 export const updateCliTool = async (req, res, next) => {
   try {
-    const { id } = req.params;
-    const data = req.body;
-
-    if (data.category) {
-      const categoryExists = await Category.findById(data.category);
-      if (!categoryExists) {
-        return res.status(400).json({ status: 'fail', message: 'Category not found.' });
-      }
-    }
-
-    const tool = await CliTool.findByIdAndUpdate(id, data, { new: true, runValidators: true })
-      .populate('category', 'name slug')
-      .lean();
-
-    if (!tool) {
-      return res.status(404).json({ status: 'fail', message: 'CLI tool not found.' });
-    }
-
+    const tool = await cliToolService.updateTool(req.params.id, req.body);
     res.json({ status: 'success', data: { tool } });
   } catch (error) {
+    if (error.message === 'CATEGORY_NOT_FOUND') {
+      return res.status(400).json({ status: 'fail', message: 'Category not found.' });
+    }
+    if (error.message === 'NOT_FOUND') {
+      return res.status(404).json({ status: 'fail', message: 'CLI tool not found.' });
+    }
     if (error.code === 11000) {
       return res.status(409).json({ status: 'fail', message: 'A CLI tool with this name already exists.' });
     }
@@ -170,34 +129,24 @@ export const updateCliTool = async (req, res, next) => {
 
 export const deleteCliTool = async (req, res, next) => {
   try {
-    const tool = await CliTool.findByIdAndUpdate(req.params.id, { isActive: false }, { new: true }).lean();
-
-    if (!tool) {
-      return res.status(404).json({ status: 'fail', message: 'CLI tool not found.' });
-    }
-
+    await cliToolService.deactivateTool(req.params.id);
     res.json({ status: 'success', message: 'CLI tool deactivated.' });
   } catch (error) {
+    if (error.message === 'NOT_FOUND') {
+      return res.status(404).json({ status: 'fail', message: 'CLI tool not found.' });
+    }
     next(error);
   }
 };
 
 export const updateCliToolSeo = async (req, res, next) => {
   try {
-    const tool = await CliTool.findByIdAndUpdate(
-      req.params.id,
-      { $set: { seo: req.body } },
-      { new: true, runValidators: true },
-    )
-      .populate('category', 'name slug')
-      .lean();
-
-    if (!tool) {
-      return res.status(404).json({ status: 'fail', message: 'CLI tool not found.' });
-    }
-
+    const tool = await cliToolService.updateTool(req.params.id, { seo: req.body });
     res.json({ status: 'success', data: { tool } });
   } catch (error) {
+    if (error.message === 'NOT_FOUND') {
+      return res.status(404).json({ status: 'fail', message: 'CLI tool not found.' });
+    }
     next(error);
   }
 };
@@ -243,15 +192,17 @@ export const updateCategory = async (req, res, next) => {
 
 export const deleteCategory = async (req, res, next) => {
   try {
-    const toolsUsing = await CliTool.countDocuments({ category: req.params.id, isActive: true });
-    if (toolsUsing > 0) {
+    const categoryId = req.params.id;
+    const toolsUsing = await cliToolService.getAllCliTools({ category: categoryId });
+    
+    if (toolsUsing.length > 0) {
       return res.status(400).json({
         status: 'fail',
-        message: `Cannot delete category. ${toolsUsing} active CLI tool(s) are using it.`,
+        message: `Cannot delete category. ${toolsUsing.length} active CLI tool(s) are using it.`,
       });
     }
 
-    const category = await Category.findByIdAndDelete(req.params.id).lean();
+    const category = await Category.findByIdAndDelete(categoryId).lean();
 
     if (!category) {
       return res.status(404).json({ status: 'fail', message: 'Category not found.' });
@@ -262,3 +213,4 @@ export const deleteCategory = async (req, res, next) => {
     next(error);
   }
 };
+

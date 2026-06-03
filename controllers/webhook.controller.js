@@ -1,5 +1,5 @@
 import { Webhook } from 'svix';
-import User from '../models/user.model.js';
+import * as userService from '../services/user.service.js';
 
 export const handleClerkWebhook = async (req, res, next) => {
   try {
@@ -15,19 +15,14 @@ export const handleClerkWebhook = async (req, res, next) => {
     switch (type) {
       case 'user.created':
       case 'user.updated': {
-        await User.findOneAndUpdate(
-          { clerkId: data.id },
-          {
-            clerkId: data.id,
-            name: `${data.first_name || ''} ${data.last_name || ''}`.trim() || data.email_addresses?.[0]?.email_address,
-            email: data.email_addresses?.[0]?.email_address,
-          },
-          { upsert: true, new: true, runValidators: true },
-        );
+        const name = `${data.first_name || ''} ${data.last_name || ''}`.trim() || data.email_addresses?.[0]?.email_address;
+        const email = data.email_addresses?.[0]?.email_address;
+        
+        await userService.syncUser(data.id, { name, email });
         break;
       }
       case 'user.deleted': {
-        await User.findOneAndDelete({ clerkId: data.id });
+        await userService.deleteUserByClerkId(data.id);
         break;
       }
     }
@@ -37,3 +32,4 @@ export const handleClerkWebhook = async (req, res, next) => {
     next(err);
   }
 };
+

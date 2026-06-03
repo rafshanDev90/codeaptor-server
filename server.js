@@ -53,7 +53,22 @@ app.use('/api/v1/webhooks', webhookLimiter);
 
 app.use('/api/v1/webhooks', webhookRouter);
 app.use(express.json());
+
+// Health Check Endpoint
+app.get('/health', async (req, res) => {
+  const dbStatus = mongoose.connection.readyState === 1 ? 'up' : 'down';
+  res.status(dbStatus === 'up' ? 200 : 503).json({
+    status: dbStatus === 'up' ? 'success' : 'error',
+    timestamp: new Date(),
+    services: {
+      database: dbStatus,
+      server: 'up'
+    }
+  });
+});
+
 app.use((req, res, next) => {
+
   logger.info(`Request: ${req.method} ${req.originalUrl}`);
   next();
 });
