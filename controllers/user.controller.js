@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { validate } from '../middlewares/auth.middlewares.js';
+import User from '../models/user.model.js';
 
 export const updateProfileSchema = z.object({
   name: z.string().min(1).max(255).optional(),
@@ -28,4 +29,13 @@ export const getAdminDashboard = (req, res) => {
     status: 'success',
     message: 'Welcome to the secure administrative control panel.',
   });
+};
+
+export const getAllUsers = async (req, res, next) => {
+  try {
+    const users = await User.find().select('-__v').sort({ createdAt: -1 });
+    res.status(200).json({ status: 'success', data: { users } });
+  } catch (error) {
+    next(error);
+  }
 };
