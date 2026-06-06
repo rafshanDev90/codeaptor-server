@@ -16,6 +16,9 @@ const app = express();
 
 // 1) GLOBAL MIDDLEWARES
 
+// Disable ETags to prevent 304 responses with empty body
+app.set('etag', false);
+
 // Trust first proxy for correct client IP detection
 app.set('trust proxy', 1);
 

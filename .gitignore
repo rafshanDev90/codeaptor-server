@@ -4,3 +4,5 @@ node_modules/
 scripts/make-admin.js
 seed-categories.js
 .gitignore
+controllers/cache-test.controller.js
+services/cache-test.service.js

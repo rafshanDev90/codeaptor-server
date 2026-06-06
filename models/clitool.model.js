@@ -27,6 +27,10 @@ const cliToolSchema = new mongoose.Schema({
   officialUrl: {
     type: String,
     required: true,
+    validate: {
+    validator: (v) => /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([\/\w .-]*)*\/?$/.test(v),
+    message: props => `${props.value} is not a valid URL!`
+  },
   },
   downloadUrl: String,
   icon: String,
@@ -85,7 +89,23 @@ const cliToolSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 
-cliToolSchema.index({ category: 1, isActive: 1 });
+cliToolSchema.index({ category: 1 });
 cliToolSchema.index({ isFeatured: -1, createdAt: -1 });
+cliToolSchema.index(
+  { displayName: 'text', description: 'text', name: 'text' },
+  { weights: { displayName: 10, name: 5, description: 1 } } // Prioritizes matches in titles
+);
+
+cliToolSchema.pre('save', function(next) {
+  if (this.isModified('name')) {
+    this.name = this.name
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, '-')       // Replace spaces with -
+      .replace(/[^a-z0-9-]/g, ''); // Remove all non-alphanumeric characters except -
+  }
+  next();
+});
+
 
 export default mongoose.model('CliTool', cliToolSchema);
