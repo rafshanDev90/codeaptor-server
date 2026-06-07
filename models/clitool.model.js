@@ -35,6 +35,7 @@ const cliToolSchema = new mongoose.Schema({
   downloadUrl: String,
   icon: String,
   iconName: String, // For Lucide icons in frontend
+  iconUrl: String,
   version: String,
   language: String,
   installCommand: String,
