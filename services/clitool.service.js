@@ -41,7 +41,7 @@ async function predictCategory(displayName, description) {
   }
 }
 
-export const getAllCliTools = async (filters) => {
+export const getAllCliToolsV0 = async (filters) => {
   const key = cacheKey('clitools', `all:${JSON.stringify(filters)}`);
 
   return await getOrSet(key, async () => {
@@ -55,19 +55,63 @@ export const getAllCliTools = async (filters) => {
     }
     if (featured === 'true') filter.isFeatured = true;
     if (search) {
-      filter.$or = [
-        { displayName: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } },
-        { name: { $regex: search, $options: 'i' } },
-      ];
+      if (search.length >= 2) {
+        filter.$text = { $search: search };
+      } else {
+        filter.$or = [
+          { displayName: { $regex: search, $options: 'i' } },
+          { name: { $regex: search, $options: 'i' } },
+        ];
+      }
     }
 
-    return await CliTool.find(filter)
-      .populate('category', 'name slug')
-      .sort({ isFeatured: -1, createdAt: -1 })
-      .lean();
+    const query = CliTool.find(filter)
+      .populate('category', 'name slug');
+
+    if (filter.$text) {
+      query.sort({ score: { $meta: 'textScore' }, isFeatured: -1, createdAt: -1 });
+    } else {
+      query.sort({ isFeatured: -1, createdAt: -1 });
+    }
+
+    return await query.lean();
   });
 };
+export const getAllCliTools = async (filters) => {
+  const key = cacheKey('clitools', `all:${JSON.stringify(filters)}`);
+
+  return await getOrSet(key, async () => {
+    const { category, search, featured } = filters;
+    const filter = { isActive: true };
+
+    if (category) {
+      const catDoc = await Category.findOne({ slug: category }).select('_id').lean();
+      if (!catDoc) return [];
+      filter.category = catDoc._id;
+    }
+    
+    if (featured === 'true') filter.isFeatured = true;
+    
+    // 👇 পুরাতন $regex এর বদলে মঙ্গোডিবির ফাস্ট টেক্সট সার্চ অপ্টিমাইজেশন
+    if (search) {
+      filter.$text = { $search: search };
+    }
+
+    // যদি সার্চ কিওয়ার্ড থাকে, তবে রিলেভেন্স স্কোর (score) অনুযায়ী সর্ট হবে, অন্যথায় ফিক্সড সর্ট হবে
+    const query = CliTool.find(filter).populate('category', 'name slug');
+
+    if (search) {
+      // এটি করার ফলে সবচেয়ে পারফেক্ট ম্যাচিং ডাটা সবার আগে আসবে (Search Relevance Score)
+      query.select({ score: { $meta: 'textScore' } });
+      query.sort({ score: { $meta: 'textScore' } });
+    } else {
+      query.sort({ isFeatured: -1, createdAt: -1 });
+    }
+
+    return await query.lean();
+  });
+};
+
 
 
 export const getCliToolBySlug = async (slug) => {
@@ -171,6 +215,22 @@ export const getAllCategories = async () => {
 
   return await getOrSet(key, async () => {
     return await Category.find().sort({ displayOrder: 1 }).lean();
+  });
+};
+
+export const getCategoryCounts = async () => {
+  const key = cacheKey('categories', 'counts');
+
+  return await getOrSet(key, async () => {
+    const counts = await CliTool.aggregate([
+      { $match: { isActive: true } },
+      { $group: { _id: '$category', count: { $sum: 1 } } },
+      { $lookup: { from: 'categories', localField: '_id', foreignField: '_id', as: 'category' } },
+      { $unwind: '$category' },
+      { $project: { _id: 0, name: '$category.name', slug: '$category.slug', count: 1 } },
+      { $sort: { count: -1 } },
+    ]);
+    return counts;
   });
 };
 

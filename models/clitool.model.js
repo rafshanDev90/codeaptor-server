@@ -91,9 +91,17 @@ const cliToolSchema = new mongoose.Schema({
 
 cliToolSchema.index({ category: 1 });
 cliToolSchema.index({ isFeatured: -1, createdAt: -1 });
+// 👇 এই নতুন টেক্সট ইনডেক্সটি নিচে যোগ করুন
 cliToolSchema.index(
-  { displayName: 'text', description: 'text', name: 'text' },
-  { weights: { displayName: 10, name: 5, description: 1 } } // Prioritizes matches in titles
+  { displayName: 'text', name: 'text', description: 'text' },
+  { 
+    weights: { 
+      displayName: 10,  // টাইটেলে মিললে সেটাকে সবার উপরে দেখাবে (Highest Relevance)
+      name: 5, 
+      description: 1    // ডেসক্রিপশনে মিললে রিলেভেন্স একটু কম হবে
+    },
+    name: 'CliToolTextSearchIndex' // ইনডেক্সের একটি সুন্দর নাম দিলাম
+  }
 );
 
 cliToolSchema.pre('save', function(next) {

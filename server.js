@@ -14,12 +14,30 @@ const MONGO_URI = process.env.MONGODB_URI || process.env.MONGO_URI || 'mongodb:/
 
 let server;
 
+async function warmCache() {
+  try {
+    logger.info('Warming cache...');
+    const svc = await import('./services/clitool.service.js');
+    await Promise.allSettled([
+      svc.getAllCliTools({}),
+      svc.getAllCategories(),
+      svc.getCategoryCounts(),
+    ]);
+    logger.info('Cache warmed successfully');
+  } catch (err) {
+    logger.warn('Cache warming skipped:', err.message);
+  }
+}
+
 // Connect to Database
 logger.info('Attempting to connect to MongoDB...');
 mongoose.connect(MONGO_URI)
-  .then(() => {
+  .then(async () => {
     logger.info('Connected to MongoDB successfully.');
     
+    // Warm cache before starting server
+    await warmCache();
+
     // Start Server
     server = app.listen(PORT, () => {
       logger.info(`Server running on port ${PORT} in ${process.env.NODE_ENV || 'development'} mode`);

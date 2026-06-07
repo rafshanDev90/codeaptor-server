@@ -5,6 +5,7 @@ import {
   getCliTools,
   getCliToolBySlug,
   getCategories,
+  getCategoryCounts,
   getAdminCliTools,
   createCliTool,
   updateCliTool,
@@ -25,6 +26,7 @@ const router = Router();
 
 router.get('/', getCliTools);
 router.get('/categories', getCategories);
+router.get('/categories/counts', getCategoryCounts);
 router.get('/cache-test', testCache);
 router.get('/:slug', getCliToolBySlug);
 

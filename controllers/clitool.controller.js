@@ -55,6 +55,11 @@ export const getCategories = catchAsync(async (req, res, next) => {
   res.json({ status: 'success', data: { categories } });
 });
 
+export const getCategoryCounts = catchAsync(async (req, res, next) => {
+  const counts = await cliToolService.getCategoryCounts();
+  res.json({ status: 'success', data: { counts } });
+});
+
 export const getAdminCliTools = catchAsync(async (req, res, next) => {
   const { page = '1', limit = '50' } = req.query;
   const pageNum = parseInt(page, 10) || 1;
