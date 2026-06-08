@@ -1,6 +1,9 @@
 import redisio from "ioredis";
 
-const redis = new redisio("redis://localhost:6379", {
+const host = process.env.REDIS_HOST || "localhost";
+const port = process.env.REDIS_PORT || "6379";
+
+const redis = new redisio(`redis://${host}:${port}`, {
   maxRetriesPerRequest: 3,
   retryStrategy(times) {
     if (times > 5) return null;
@@ -16,5 +19,4 @@ redis.on("connect", () => {
   console.log("Redis connected");
 });
 
-// 👇 ADD THIS LINE AT THE BOTTOM
 export default redis;

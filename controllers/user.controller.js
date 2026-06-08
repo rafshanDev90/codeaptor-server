@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { validate } from '../middlewares/auth.middlewares.js';
-import User from '../models/user.model.js';
+import * as userService from '../services/user.service.js';
 
 export const updateProfileSchema = z.object({
   name: z.string().min(1).max(255).optional(),
@@ -33,7 +33,7 @@ export const getAdminDashboard = (req, res) => {
 
 export const getAllUsers = async (req, res, next) => {
   try {
-    const users = await User.find().select('-__v').sort({ createdAt: -1 });
+    const users = await userService.getAllUsers();
     res.status(200).json({ status: 'success', data: { users } });
   } catch (error) {
     next(error);

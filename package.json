@@ -22,6 +22,7 @@
     "mongoose": "^9.6.3",
     "morgan": "^1.10.1",
     "svix": "^1.45.1",
+    "typesense": "^3.0.6",
     "zod": "^4.4.3"
   },
   "devDependencies": {

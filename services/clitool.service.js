@@ -1,15 +1,11 @@
-import CliTool from '../models/clitool.model.js';
-import Category from '../models/category.model.js';
 import AppError from '../utils/appError.js';
 import { getOrSet, cacheKey, invalidate } from './cache.service.js';
-
+import * as cliToolRepo from '../repositories/clitool.repository.js';
+import * as categoryRepo from '../repositories/category.repository.js';
+import { searchTools as tsSearch } from './search.service.js';
 
 const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:5000';
 
-/**
- * Call FastAPI ML service to predict category from text.
- * Returns category ID or null if prediction fails / confidence too low.
- */
 async function predictCategory(displayName, description) {
   try {
     const response = await fetch(`${ML_SERVICE_URL}/predict`, {
@@ -28,7 +24,6 @@ async function predictCategory(displayName, description) {
     if (result.status !== 'success') return null;
 
     const { predicted_category_id, confidence } = result.data;
-
     if (confidence < 0.5) {
       console.warn(`ML confidence too low: ${confidence}`);
       return null;
@@ -41,124 +36,65 @@ async function predictCategory(displayName, description) {
   }
 }
 
-export const getAllCliToolsV0 = async (filters) => {
-  const key = cacheKey('clitools', `all:${JSON.stringify(filters)}`);
-
-  return await getOrSet(key, async () => {
-    const { category, search, featured } = filters;
-    const filter = { isActive: true };
-
-    if (category) {
-      const catDoc = await Category.findOne({ slug: category }).select('_id').lean();
-      if (!catDoc) return [];
-      filter.category = catDoc._id;
-    }
-    if (featured === 'true') filter.isFeatured = true;
-    if (search) {
-      if (search.length >= 2) {
-        filter.$text = { $search: search };
-      } else {
-        filter.$or = [
-          { displayName: { $regex: search, $options: 'i' } },
-          { name: { $regex: search, $options: 'i' } },
-        ];
-      }
-    }
-
-    const query = CliTool.find(filter)
-      .populate('category', 'name slug');
-
-    if (filter.$text) {
-      query.sort({ score: { $meta: 'textScore' }, isFeatured: -1, createdAt: -1 });
-    } else {
-      query.sort({ isFeatured: -1, createdAt: -1 });
-    }
-
-    return await query.lean();
-  });
-};
 export const getAllCliTools = async (filters) => {
+  const { category, search, featured } = filters;
+
+  if (search) {
+    const tsResult = await tsSearch(search, { category, featured });
+    const ids = tsResult.tools.map((t) => t["_.id"]);
+    if (ids.length === 0) return [];
+    const tools = await cliToolRepo.findTools({ _id: { $in: ids }, isActive: true });
+    const idOrder = new Map(ids.map((id, i) => [id.toString(), i]));
+    tools.sort((a, b) => (idOrder.get(a._id.toString()) || 0) - (idOrder.get(b._id.toString()) || 0));
+    return tools;
+  }
+
   const key = cacheKey('clitools', `all:${JSON.stringify(filters)}`);
 
   return await getOrSet(key, async () => {
-    const { category, search, featured } = filters;
     const filter = { isActive: true };
 
     if (category) {
-      const catDoc = await Category.findOne({ slug: category }).select('_id').lean();
+      const catDoc = await categoryRepo.findCategoryBySlug(category);
       if (!catDoc) return [];
       filter.category = catDoc._id;
     }
-    
+
     if (featured === 'true') filter.isFeatured = true;
-    
-    // 👇 পুরাতন $regex এর বদলে মঙ্গোডিবির ফাস্ট টেক্সট সার্চ অপ্টিমাইজেশন
-    if (search) {
-      filter.$text = { $search: search };
-    }
 
-    // যদি সার্চ কিওয়ার্ড থাকে, তবে রিলেভেন্স স্কোর (score) অনুযায়ী সর্ট হবে, অন্যথায় ফিক্সড সর্ট হবে
-    const query = CliTool.find(filter).populate('category', 'name slug');
-
-    if (search) {
-      // এটি করার ফলে সবচেয়ে পারফেক্ট ম্যাচিং ডাটা সবার আগে আসবে (Search Relevance Score)
-      query.select({ score: { $meta: 'textScore' } });
-      query.sort({ score: { $meta: 'textScore' } });
-    } else {
-      query.sort({ isFeatured: -1, createdAt: -1 });
-    }
-
-    return await query.lean();
+    return await cliToolRepo.findTools(filter, { sort: { isFeatured: -1, createdAt: -1 } });
   });
 };
-
-
 
 export const getCliToolBySlug = async (slug) => {
   const key = cacheKey('clitools', `slug:${slug}`);
 
   return await getOrSet(key, async () => {
-    const tool = await CliTool.findOne({ name: slug, isActive: true })
-      .populate('category', 'name slug')
-      .lean();
-    
+    const tool = await cliToolRepo.findToolBySlug(slug);
     if (!tool) throw new AppError('CLI tool not found.', 404);
     return tool;
   });
 };
 
-
 export const getAdminTools = async (page = 1, limit = 50) => {
-  const skip = (page - 1) * limit;
-  const [tools, total] = await Promise.all([
-    CliTool.find()
-      .populate('category', 'name slug')
-      .populate('createdBy', 'name email')
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .lean(),
-    CliTool.countDocuments(),
-  ]);
-
-  return { tools, total, pages: Math.ceil(total / limit) };
+  return await cliToolRepo.findToolsWithPagination(
+    {},
+    { createdAt: -1 },
+    page,
+    limit
+  );
 };
 
 export const createTool = async (data, userId) => {
-  // ML auto-categorization: predict category if not provided
   if (!data.category) {
-    const predictedCategoryId = await predictCategory(
-      data.displayName,
-      data.description,
-    );
+    const predictedCategoryId = await predictCategory(data.displayName, data.description);
     if (predictedCategoryId) {
-      console.log(`ML auto-categorized to category ID: ${predictedCategoryId}`);
       data.category = predictedCategoryId;
     }
   }
 
   if (data.category) {
-    const categoryExists = await Category.findById(data.category);
+    const categoryExists = await categoryRepo.findCategoryById(data.category);
     if (!categoryExists) throw new AppError('Category not found.', 400);
   } else {
     throw new AppError(
@@ -168,9 +104,9 @@ export const createTool = async (data, userId) => {
   }
 
   try {
-    const tool = await CliTool.create({ ...data, createdBy: userId });
-    const result = await CliTool.findById(tool._id).populate('category', 'name slug').lean();
-    await invalidate('clitools:*'); 
+    const tool = await cliToolRepo.createTool({ ...data, createdBy: userId });
+    const result = await cliToolRepo.findToolById(tool._id);
+    await invalidate('clitools:*');
     return result;
   } catch (error) {
     if (error.code === 11000) {
@@ -182,15 +118,12 @@ export const createTool = async (data, userId) => {
 
 export const updateTool = async (id, data) => {
   if (data.category) {
-    const categoryExists = await Category.findById(data.category);
+    const categoryExists = await categoryRepo.findCategoryById(data.category);
     if (!categoryExists) throw new AppError('Category not found.', 400);
   }
 
   try {
-    const tool = await CliTool.findByIdAndUpdate(id, data, { new: true, runValidators: true })
-      .populate('category', 'name slug')
-      .lean();
-
+    const tool = await cliToolRepo.updateToolById(id, data);
     if (!tool) throw new AppError('CLI tool not found.', 404);
     await invalidate('clitools:*');
     return tool;
@@ -203,26 +136,23 @@ export const updateTool = async (id, data) => {
 };
 
 export const deactivateTool = async (id) => {
-  const tool = await CliTool.findByIdAndUpdate(id, { isActive: false }, { new: true }).lean();
+  const tool = await cliToolRepo.deactivateToolById(id);
   if (!tool) throw new AppError('CLI tool not found.', 404);
-  await invalidate('clitools:*'); 
+  await invalidate('clitools:*');
   return tool;
 };
 
-// Category Management
 export const getAllCategories = async () => {
   const key = cacheKey('categories', 'all');
-
   return await getOrSet(key, async () => {
-    return await Category.find().sort({ displayOrder: 1 }).lean();
+    return await categoryRepo.findAllCategories({ displayOrder: 1 });
   });
 };
 
 export const getCategoryCounts = async () => {
   const key = cacheKey('categories', 'counts');
-
   return await getOrSet(key, async () => {
-    const counts = await CliTool.aggregate([
+    const counts = await cliToolRepo.aggregateTools([
       { $match: { isActive: true } },
       { $group: { _id: '$category', count: { $sum: 1 } } },
       { $lookup: { from: 'categories', localField: '_id', foreignField: '_id', as: 'category' } },
@@ -234,14 +164,13 @@ export const getCategoryCounts = async () => {
   });
 };
 
-
 export const createCategory = async (data) => {
   if (!data.slug) {
     data.slug = data.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
   }
 
   try {
-    const category = await Category.create(data);
+    const category = await categoryRepo.createCategory(data);
     await invalidate('categories:*');
     return category;
   } catch (error) {
@@ -258,7 +187,7 @@ export const updateCategory = async (id, data) => {
   }
 
   try {
-    const category = await Category.findByIdAndUpdate(id, data, { new: true, runValidators: true }).lean();
+    const category = await categoryRepo.updateCategoryById(id, data);
     if (!category) throw new AppError('Category not found.', 404);
     await invalidate('categories:*');
     await invalidate('clitools:*');
@@ -272,19 +201,15 @@ export const updateCategory = async (id, data) => {
 };
 
 export const deleteCategory = async (id) => {
-  const toolsUsing = await CliTool.countDocuments({ category: id, isActive: true });
-  
+  const toolsUsing = await cliToolRepo.countTools({ category: id, isActive: true });
+
   if (toolsUsing > 0) {
     throw new AppError(`Cannot delete category. ${toolsUsing} active CLI tool(s) are using it.`, 400);
   }
 
-  const category = await Category.findByIdAndDelete(id).lean();
+  const category = await categoryRepo.deleteCategoryById(id);
   if (!category) throw new AppError('Category not found.', 404);
 
-  // Clears categories list
   await invalidate('categories:*');
-  
-  // Clears any tool queries that might reference the deleted category
-  await invalidate('clitools:*'); 
+  await invalidate('clitools:*');
 };
-

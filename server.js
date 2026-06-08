@@ -2,6 +2,7 @@ import 'dotenv/config';
 import mongoose from 'mongoose';
 import app from './app.js';
 import { logger } from './utils/logger.js';
+import { startSync, stopSync } from './services/typesense-sync.service.js';
 
 // Handle uncaught exceptions
 process.on('uncaughtException', (err) => {
@@ -38,6 +39,9 @@ mongoose.connect(MONGO_URI)
     // Warm cache before starting server
     await warmCache();
 
+    // Start Typesense Change Stream sync
+    startSync();
+
     // Start Server
     server = app.listen(PORT, () => {
       logger.info(`Server running on port ${PORT} in ${process.env.NODE_ENV || 'development'} mode`);
@@ -63,6 +67,9 @@ process.on('unhandledRejection', (err) => {
 // Handle Graceful Shutdown
 const gracefulShutdown = (signal) => {
   logger.info(`${signal} received. Shutting down gracefully...`);
+
+  stopSync();
+
   if (server) {
     server.close(() => {
       mongoose.connection.close(false).then(() => {

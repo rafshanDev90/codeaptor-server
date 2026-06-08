@@ -1,15 +1,15 @@
 import mongoose from 'mongoose';
-import User from '../models/user.model.js';
-import CliTool from '../models/clitool.model.js';
-import Category from '../models/category.model.js';
+import * as userRepo from '../repositories/user.repository.js';
+import * as cliToolRepo from '../repositories/clitool.repository.js';
+import * as categoryRepo from '../repositories/category.repository.js';
 
 export const getSystemStats = async () => {
   const [totalUsers, totalTools, activeTools, totalCategories, recentUsers] = await Promise.all([
-    User.countDocuments(),
-    CliTool.countDocuments(),
-    CliTool.countDocuments({ isActive: true }),
-    Category.countDocuments(),
-    User.find().sort({ createdAt: -1 }).limit(5).select('name email role createdAt').lean(),
+    userRepo.countUsers(),
+    cliToolRepo.countTools(),
+    cliToolRepo.countTools({ isActive: true }),
+    categoryRepo.countCategories(),
+    userRepo.findRecentUsers(5),
   ]);
 
   const dbState = mongoose.connection.readyState;

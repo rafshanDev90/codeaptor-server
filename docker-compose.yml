@@ -1,10 +1,13 @@
-version: '3.8'
-
 services:
   app:
     build: .
     container_name: codeaptor-app
     restart: always
+    depends_on:
+      redis:
+        condition: service_started
+      typesense:
+        condition: service_started
     environment:
       - PORT=3000
       - NODE_ENV=production
@@ -13,5 +16,38 @@ services:
       - CLERK_SECRET_KEY=${CLERK_SECRET_KEY}
       - CLIENT_ORIGIN=${CLIENT_ORIGIN}
       - CLERK_WEBHOOK_SECRET=${CLERK_WEBHOOK_SECRET}
+      - REDIS_HOST=codeaptor-redis
+      - REDIS_PORT=6379
+      - TYPESENSE_HOST=codeaptor-typesense
+      - TYPESENSE_PORT=8108
+      - TYPESENSE_PROTOCOL=http
+      - TYPESENSE_API_KEY=xyz123abc456def789
     ports:
       - "3000:3000"
+
+  redis:
+    image: redis:7-alpine
+    container_name: codeaptor-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+  typesense:
+    image: typesense/typesense:27.1
+    container_name: codeaptor-typesense
+    restart: always
+    ports:
+      - "8108:8108"
+    volumes:
+      - typesense-data:/data
+    command: >
+      --data-dir /data
+      --api-key xyz123abc456def789
+      --listen-port 8108
+      --enable-cors
+
+volumes:
+  typesense-data:
+  redis-data:
