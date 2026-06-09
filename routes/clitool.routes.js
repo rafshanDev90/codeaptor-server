@@ -20,14 +20,11 @@ import {
   createCategorySchema,
   updateCategorySchema,
 } from '../controllers/clitool.controller.js';
-import { testCache } from '../controllers/cache-test.controller.js';
-
 const router = Router();
 
 router.get('/', getCliTools);
 router.get('/categories', getCategories);
 router.get('/categories/counts', getCategoryCounts);
-router.get('/cache-test', testCache);
 router.get('/:slug', getCliToolBySlug);
 
 router.get('/admin/all', protectRoute, restrictTo('admin'), getAdminCliTools);
