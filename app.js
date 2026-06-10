@@ -31,7 +31,9 @@ app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 // CORS configuration
 const corsOrigins = [
   process.env.CLIENT_ORIGIN,
+  'https://getcli.vercel.app',
   'https://5.189.147.108.nip.io',
+  'http://5.189.147.108.nip.io:3000',
   'http://localhost:3000',
   'http://localhost:3001',
   'http://localhost:5173',
