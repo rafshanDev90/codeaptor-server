@@ -105,7 +105,7 @@ cliToolSchema.index(
   }
 );
 
-cliToolSchema.pre('save', function(next) {
+cliToolSchema.pre('save', function() {
   if (this.isModified('name')) {
     this.name = this.name
       .toLowerCase()
@@ -113,7 +113,6 @@ cliToolSchema.pre('save', function(next) {
       .replace(/\s+/g, '-')       // Replace spaces with -
       .replace(/[^a-z0-9-]/g, ''); // Remove all non-alphanumeric characters except -
   }
-  next();
 });
 
 
