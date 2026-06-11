@@ -12,6 +12,12 @@ import adminRouter from './routes/admin.routes.js';
 import { logger } from './utils/logger.js';
 import AppError from './utils/appError.js';
 
+// AdminJS
+import AdminJS from 'adminjs';
+import AdminJSExpress from '@adminjs/express';
+import * as AdminJSMongoose from '@adminjs/mongoose';
+import MongoStore from 'connect-mongo';
+
 const app = express();
 
 // 1) GLOBAL MIDDLEWARES
@@ -23,7 +29,19 @@ app.set('etag', false);
 app.set('trust proxy', 1);
 
 // Set security HTTP headers
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+      styleSrc: ["'self'", "'unsafe-inline'", 'https:'],
+      imgSrc: ["'self'", 'data:'],
+      fontSrc: ["'self'", 'https:', 'data:'],
+      objectSrc: ["'none'"],
+      upgradeInsecureRequests: [],
+    },
+  },
+}));
 
 // Development logging
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
@@ -133,6 +151,56 @@ app.get('/api/sitemap.xml', async (req, res) => {
   }
 });
 
+// AdminJS - auto-generated admin panel
+AdminJS.registerAdapter(AdminJSMongoose);
+
+const adminJs = new AdminJS({
+  rootPath: '/admin',
+  resources: [
+    mongoose.model('CliTool'),
+    mongoose.model('Category'),
+    mongoose.model('User'),
+  ],
+  branding: {
+    companyName: 'Codeaptor',
+    withMadeWithLove: false,
+  },
+});
+
+const adminJsSession = {
+  secret: process.env.ADMINJS_SESSION_SECRET || 'change-me-session-secret',
+  resave: true,
+  saveUninitialized: true,
+  store: MongoStore.create({
+    clientPromise: mongoose.connection.asPromise().then(() => mongoose.connection.getClient()),
+    collectionName: 'adminSessions',
+  }),
+};
+
+const adminJsRouter = AdminJSExpress.buildAuthenticatedRouter(
+  adminJs,
+  {
+    authenticate: async (email, password) => {
+      const adminEmail = process.env.ADMINJS_ADMIN_EMAIL;
+      const adminPassword = process.env.ADMINJS_ADMIN_PASSWORD;
+      if (email === adminEmail && password === adminPassword) {
+        return { email, title: 'Admin' };
+      }
+      return null;
+    },
+    cookiePassword: process.env.ADMINJS_COOKIE_SECRET || 'change-me-cookie-secret',
+  },
+  null,
+  adminJsSession,
+);
+
+adminJsRouter.use((err, req, res, next) => {
+  console.error('ADMINJS INTERNAL ERROR:', err.message, err.stack?.split('\n').slice(0, 5).join('\n'));
+  next(err);
+});
+
+app.use(adminJs.options.rootPath, adminJsRouter);
+
 // Clerk Auth Middleware
 app.use(clerkMiddleware());
 
@@ -148,6 +216,7 @@ app.all('/{*splat}', (req, res, next) => {
 
 // 3) GLOBAL ERROR HANDLING
 app.use((err, req, res, next) => {
+  console.error('GLOBAL ERROR HANDLER:', err.message, err.stack && err.stack.split('\n').slice(0, 4).join('\n'));
   err.statusCode = err.statusCode || 500;
   err.status = err.status || 'error';
 

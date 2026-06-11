@@ -1,0 +1,48 @@
+diff --git a/node_modules/@adminjs/mongoose/lib/property.js b/node_modules/@adminjs/mongoose/lib/property.js
+index d878a56..eb606e4 100644
+--- a/node_modules/@adminjs/mongoose/lib/property.js
++++ b/node_modules/@adminjs/mongoose/lib/property.js
+@@ -44,6 +44,7 @@ class Property extends BaseProperty {
+             case 'Date':
+                 return 'datetime';
+             case 'Embedded':
++            case 'DocumentArrayElement':
+                 return 'mixed';
+             case 'ObjectID':
+             case 'ObjectId':
+@@ -64,8 +65,11 @@ class Property extends BaseProperty {
+         return this.name() !== VERSION_KEY_PROPERTY && this.name() !== ID_PROPERTY;
+     }
+     reference() {
++        const caster = this.isArray()
++            ? (this.mongoosePath.caster || this.mongoosePath.embeddedSchemaType)
++            : null;
+         const ref = this.isArray()
+-            ? this.mongoosePath.caster.options?.ref
++            ? caster.options?.ref
+             : this.mongoosePath.options?.ref;
+         if (typeof ref === 'function')
+             return ref.modelName;
+@@ -85,17 +89,19 @@ class Property extends BaseProperty {
+     }
+     subProperties() {
+         if (this.type() === 'mixed') {
+-            const subPaths = Object.values(this.mongoosePath.caster.schema.paths);
++            const caster = this.mongoosePath.caster || this.mongoosePath.embeddedSchemaType;
++            const subPaths = Object.values(caster.schema.paths);
+             return subPaths.map((p) => new Property(p));
+         }
+         return [];
+     }
+     type() {
+         if (this.isArray()) {
+-            let { instance } = this.mongoosePath.caster;
++            const caster = this.mongoosePath.caster || this.mongoosePath.embeddedSchemaType;
++            let { instance } = caster;
+             // For array of embedded schemas mongoose returns null for caster.instance
+             // That is why we have to check if caster has a schema
+-            if (!instance && this.mongoosePath.caster.schema) {
++            if ((!instance || instance === 'DocumentArrayElement') && caster.schema) {
+                 instance = 'Embedded';
+             }
+             return this.instanceToType(instance);
