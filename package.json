@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "nodemon server.js",
     "start": "node server.js",
-    "postinstall": "patch-package"
+    "postinstall": "which patch-package 2>/dev/null && patch-package || true"
   },
   "keywords": [],
   "author": "",

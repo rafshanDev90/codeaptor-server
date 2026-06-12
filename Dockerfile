@@ -8,6 +8,10 @@ COPY package*.json ./
 # Install production dependencies only
 RUN npm ci --only=production
 
+# Copy and apply patches (patch-package not in node_modules, so use npx)
+COPY patches ./patches
+RUN npx -y patch-package
+
 # Copy application source code
 COPY . .
 
