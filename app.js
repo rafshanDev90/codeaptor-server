@@ -28,6 +28,9 @@ app.set('etag', false);
 // Trust first proxy for correct client IP detection
 app.set('trust proxy', 1);
 
+// Serve static files (for AdminJS custom assets: logo, favicon)
+app.use('/public', express.static('public'));
+
 // Set security HTTP headers
 app.use(helmet({
   contentSecurityPolicy: {
@@ -157,13 +160,109 @@ AdminJS.registerAdapter(AdminJSMongoose);
 const adminJs = new AdminJS({
   rootPath: '/admin',
   resources: [
-    mongoose.model('CliTool'),
-    mongoose.model('Category'),
-    mongoose.model('User'),
+    {
+      resource: mongoose.model('CliTool'),
+      options: {
+        navigation: { name: 'Content', icon: 'Terminal' },
+        properties: {
+          _id: { isId: true },
+          longDescription: { type: 'textarea' },
+          metrics: { type: 'mixed' },
+          'metrics.stars': { type: 'number' },
+          'metrics.forks': { type: 'number' },
+          'metrics.issues': { type: 'number' },
+          'metrics.contributors': { type: 'number' },
+          'metrics.weeklyGrowth': { type: 'number' },
+          'metrics.downloads': { type: 'number' },
+          seo: { type: 'mixed' },
+          features: { type: 'mixed' },
+          docs: { type: 'mixed' },
+          createdAt: { isVisible: { list: true, show: true, edit: false } },
+          updatedAt: { isVisible: { list: true, show: true, edit: false } },
+        },
+        sort: { direction: 'desc', sortBy: 'createdAt' },
+      },
+    },
+    {
+      resource: mongoose.model('Category'),
+      options: {
+        navigation: { name: 'Content', icon: 'Folder' },
+        properties: {
+          createdAt: { isVisible: { list: false, show: true, edit: false } },
+          updatedAt: { isVisible: { list: false, show: true, edit: false } },
+        },
+      },
+    },
+    {
+      resource: mongoose.model('User'),
+      options: {
+        navigation: { name: 'Administration', icon: 'User' },
+        properties: {
+          clerkId: { isVisible: { list: true, show: true, edit: false } },
+          createdAt: { isVisible: { list: true, show: true, edit: false } },
+          updatedAt: { isVisible: { list: false, show: true, edit: false } },
+        },
+        actions: {
+          new: { isAccessible: false },
+          delete: { isAccessible: false },
+        },
+      },
+    },
   ],
   branding: {
-    companyName: 'Codeaptor',
+    companyName: 'CLI Hub',
     withMadeWithLove: false,
+  },
+  locale: {
+    language: 'en',
+    translations: {
+      labels: {
+        CliTool: 'CLI Tools',
+        Category: 'Categories',
+        User: 'Users',
+      },
+      messages: {
+        loginWelcome: 'CLI Hub — Admin Panel',
+      },
+      properties: {
+        CliTool: {
+          displayName: 'Display Name',
+          officialUrl: 'Official URL',
+          downloadUrl: 'Download URL',
+          isFeatured: 'Featured',
+          isActive: 'Active',
+          packageManager: 'Package Manager',
+          installCommand: 'Install Command',
+          longDescription: 'Long Description',
+          createdAt: 'Created At',
+          updatedAt: 'Updated At',
+        },
+        Category: {
+          displayOrder: 'Display Order',
+          createdAt: 'Created At',
+          updatedAt: 'Updated At',
+        },
+        User: {
+          clerkId: 'Clerk ID',
+          createdAt: 'Joined At',
+          updatedAt: 'Updated At',
+        },
+      },
+    },
+  },
+  dashboard: {
+    handler: async () => {
+      const { getSystemStats } = await import('./services/admin.service.js');
+      const stats = await getSystemStats();
+      return {
+        totalTools: stats.stats.tools.total,
+        activeTools: stats.stats.tools.active,
+        totalUsers: stats.stats.users.total,
+        totalCategories: stats.stats.categories.total,
+        dbStatus: stats.system.database,
+        uptime: stats.system.uptime,
+      };
+    },
   },
 });
 
