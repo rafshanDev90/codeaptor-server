@@ -6,3 +6,4 @@ seed-categories.js
 .gitignore
 controllers/cache-test.controller.js
 services/cache-test.service.js
+.adminjs/bundle.js
