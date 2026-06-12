@@ -7,11 +7,20 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 let currentRunId = null;
 let activeLogs = [];
+let activeChild = null;
 
 export const getCurrentRunId = () => currentRunId;
 
 export const getActiveRunLogs = async () => {
   return activeLogs;
+};
+
+export const stopDiscovery = async () => {
+  if (!activeChild) {
+    throw new Error('No active discovery run to stop.');
+  }
+  activeChild.kill('SIGTERM');
+  return { stopped: true };
 };
 
 export const startDiscovery = async (userId) => {
@@ -49,6 +58,7 @@ export const startDiscovery = async (userId) => {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: process.env,
     });
+    activeChild = child;
 
     let summaryResult = null;
 
@@ -66,6 +76,7 @@ export const startDiscovery = async (userId) => {
 
     child.on('error', (err) => {
       clearInterval(interval);
+      activeChild = null;
       buffer = '';
       const duration = Date.now() - startTime;
       activeLogs.push(`FATAL: ${err.message}`);
@@ -80,6 +91,7 @@ export const startDiscovery = async (userId) => {
 
     child.on('close', async (code) => {
       clearInterval(interval);
+      activeChild = null;
       flush();
       const duration = Date.now() - startTime;
 

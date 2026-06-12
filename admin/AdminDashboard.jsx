@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Box, Text, Button, Loader, Badge, Table, TableHead, TableBody, TableCell, TableRow, Icon, H2, H4 } from '@adminjs/design-system';
 
 const StatCard = ({ label, value, icon }) => (
@@ -20,6 +20,132 @@ const statusVariant = (status) => {
   }
 };
 
+const styles = {
+  terminal: {
+    background: '#0d1117',
+    border: '1px solid #30363d',
+    borderRadius: '6px',
+    fontFamily: "'SF Mono', 'Fira Code', 'Consolas', monospace",
+    fontSize: '13px',
+    lineHeight: '1.6',
+    overflow: 'hidden',
+  },
+  terminalHeader: {
+    background: '#161b22',
+    borderBottom: '1px solid #30363d',
+    padding: '8px 16px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  terminalBody: {
+    padding: '8px 0',
+    maxHeight: '400px',
+    overflowY: 'auto',
+  },
+  logLine: {
+    display: 'flex',
+    padding: '0 16px',
+    minHeight: '22px',
+    alignItems: 'flex-start',
+  },
+  lineNumber: {
+    color: '#484f58',
+    minWidth: '32px',
+    textAlign: 'right',
+    paddingRight: '12px',
+    userSelect: 'none',
+    flexShrink: 0,
+  },
+};
+
+const lineColor = (text) => {
+  if (/✅/.test(text)) return '#3fb950';
+  if (/❌/.test(text)) return '#f85149';
+  if (/⚠/.test(text)) return '#d29922';
+  if (/FATAL|error|Error/.test(text)) return '#f85149';
+  if (/🔍|📦|🐙|🤖|📊|🎯|🖼/.test(text)) return '#58a6ff';
+  if (/→/.test(text)) return '#8b949e';
+  if (/##SUMMARY##/.test(text)) return '#d2a8ff';
+  return '#c9d1d9';
+};
+
+const LogEntry = ({ index, text }) => {
+  const color = useMemo(() => lineColor(text), [text]);
+
+  let prefix = null;
+  if (/^✅/.test(text)) prefix = { char: '✓', label: 'success', color: '#3fb950' };
+  else if (/^❌/.test(text)) prefix = { char: '✗', label: 'error', color: '#f85149' };
+  else if (/^⚠/.test(text)) prefix = { char: '!', label: 'warn', color: '#d29922' };
+
+  return (
+    <div
+      style={{
+        ...styles.logLine,
+        background: index % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)',
+      }}
+    >
+      <span style={styles.lineNumber}>{index + 1}</span>
+      <span style={{ color, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+        {text}
+      </span>
+    </div>
+  );
+};
+
+const LogViewer = ({ logs, syncing, running }) => {
+  const endRef = useRef(null);
+
+  useEffect(() => {
+    if (endRef.current) {
+      endRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [logs]);
+
+  const elapsed = useMemo(() => {
+    if (!syncing) return null;
+    const seconds = Math.floor((Date.now() - window._syncStart) / 1000);
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  }, [logs, syncing]);
+
+  return (
+    <Box mt="lg">
+      <H4 mb="lg" style={{ color: '#e6edf3' }}>Pipeline Logs</H4>
+      <Box style={styles.terminal}>
+        <Box style={styles.terminalHeader}>
+          <Box flex alignItems="center" gap="md">
+            <Badge variant={syncing ? 'primary' : running ? 'primary' : 'default'}>
+              {syncing ? 'RUNNING' : running ? 'RUNNING' : 'COMPLETED'}
+            </Badge>
+            {syncing && (
+              <Text style={{ color: '#8b949e', fontSize: '12px' }}>
+                Elapsed: {elapsed || '0:00'}
+              </Text>
+            )}
+          </Box>
+          <Text style={{ color: '#8b949e', fontSize: '12px' }}>
+            {logs.length} line{logs.length !== 1 ? 's' : ''}
+          </Text>
+        </Box>
+        <Box style={styles.terminalBody}>
+          {logs.length === 0 && syncing && (
+            <div style={{ ...styles.logLine, color: '#484f58' }}>
+              <span style={styles.lineNumber}>1</span>
+              <span>Waiting for output...</span>
+            </div>
+          )}
+          {logs.map((entry, i) => (
+            <LogEntry key={i} index={i} text={entry} />
+          ))}
+          <div ref={endRef} />
+        </Box>
+      </Box>
+    </Box>
+  );
+};
+
 const AdminDashboard = () => {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -28,7 +154,7 @@ const AdminDashboard = () => {
   const [syncSuccess, setSyncSuccess] = useState(null);
   const [history, setHistory] = useState([]);
   const [logs, setLogs] = useState([]);
-  const logsEndRef = useRef(null);
+  const [stopping, setStopping] = useState(false);
 
   const fetchDashboard = async () => {
     try {
@@ -59,17 +185,13 @@ const AdminDashboard = () => {
     fetchHistory();
   }, []);
 
-  useEffect(() => {
-    if (logsEndRef.current) {
-      logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [logs]);
-
   const handleSync = async () => {
     setSyncing(true);
     setSyncError(null);
     setSyncSuccess(null);
     setLogs([]);
+    setStopping(false);
+    window._syncStart = Date.now();
 
     const pollInterval = setInterval(async () => {
       try {
@@ -102,6 +224,19 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleStop = async () => {
+    setStopping(true);
+    try {
+      const res = await fetch('/admin/api/discovery/stop');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Failed to stop');
+    } catch (err) {
+      setSyncError(err.message);
+    } finally {
+      setStopping(false);
+    }
+  };
+
   if (loading) {
     return (
       <Box p="xxl" flex justifyContent="center" alignItems="center">
@@ -130,7 +265,7 @@ const AdminDashboard = () => {
       <Box mb="xxl">
         <H4 mb="lg">Discovery Sync</H4>
         <Box variant="card" p="xl">
-          {lastRun && !syncing ? (
+          {lastRun && !syncing && !isRunning ? (
             <Box mb="lg">
               <Text fontWeight="bold">Last Run:</Text>
               <Box mt="sm" flex alignItems="center" gap="md">
@@ -146,49 +281,39 @@ const AdminDashboard = () => {
             </Box>
           ) : null}
 
-          {!lastRun && !syncing ? (
+          {!lastRun && !syncing && !isRunning ? (
             <Text mb="lg" color="grey60">No discovery runs yet.</Text>
           ) : null}
 
           {syncError && <Box mb="md"><Text color="danger">{syncError}</Text></Box>}
           {syncSuccess && <Box mb="md"><Text color="success">{syncSuccess}</Text></Box>}
 
-          <Button
-            variant="primary"
-            onClick={handleSync}
-            disabled={syncing || isRunning}
-          >
-            {syncing ? 'Syncing...' : isRunning ? 'Sync in progress...' : 'Sync Now'}
-          </Button>
-
-          {(syncing || logs.length > 0) && (
-            <Box mt="lg">
-              <Text fontWeight="bold" mb="sm">Pipeline Logs:</Text>
-              <Box
-                variant="container"
-                bg="grey100"
-                p="md"
-                style={{
-                  maxHeight: '300px',
-                  overflowY: 'auto',
-                  fontFamily: 'monospace',
-                  fontSize: '12px',
-                  whiteSpace: 'pre-wrap',
-                  borderRadius: '4px',
-                }}
+          <Box flex gap="md" alignItems="center">
+            <Button
+              variant="primary"
+              onClick={handleSync}
+              disabled={syncing || isRunning}
+            >
+              {syncing ? 'Syncing...' : isRunning ? 'Sync in progress...' : 'Sync Now'}
+            </Button>
+            {(syncing || isRunning) && (
+              <Button
+                variant="danger"
+                onClick={handleStop}
+                disabled={stopping}
               >
-                {logs.length === 0 && syncing && <Text color="grey60">Waiting for output...</Text>}
-                {logs.map((entry, i) => (
-                  <Text key={i} as="div" fontSize="sm">{entry}</Text>
-                ))}
-                <div ref={logsEndRef} />
-              </Box>
-            </Box>
+                {stopping ? 'Stopping...' : 'Stop Sync'}
+              </Button>
+            )}
+          </Box>
+
+          {(syncing || isRunning || logs.length > 0) && (
+            <LogViewer logs={logs} syncing={syncing} running={isRunning} />
           )}
         </Box>
       </Box>
 
-      {history.length > 0 && !syncing && (
+      {history.length > 0 && !syncing && !isRunning && (
         <Box>
           <H4 mb="lg">Sync History (Last {history.length})</H4>
           <Table>

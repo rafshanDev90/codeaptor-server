@@ -366,6 +366,16 @@ adminJsRouter.get('/api/discovery/start', async (req, res, next) => {
   }
 });
 
+adminJsRouter.get('/api/discovery/stop', async (req, res, next) => {
+  try {
+    const { stopDiscovery } = await import('./services/discovery.service.js');
+    const result = await stopDiscovery();
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
 adminJsRouter.get('/api/discovery/logs', async (req, res, next) => {
   try {
     const { getActiveRunLogs, getCurrentRunId } = await import('./services/discovery.service.js');
