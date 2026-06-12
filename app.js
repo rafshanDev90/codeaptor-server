@@ -208,6 +208,34 @@ const adminJs = new AdminJS({
         },
       },
     },
+    {
+      resource: mongoose.model('DiscoveryRun'),
+      options: {
+        navigation: { name: 'Administration', icon: 'Settings' },
+        properties: {
+          log: { type: 'textarea' },
+          triggeredBy: {
+            type: 'reference',
+            isVisible: { list: true, show: true, edit: false },
+          },
+          duration: {
+            type: 'number',
+            isVisible: { list: true, show: true, edit: false },
+          },
+          startedAt: { isVisible: { list: true, show: true, edit: false } },
+          completedAt: { isVisible: { list: false, show: true, edit: false } },
+          candidates: { isVisible: { list: true, show: true, edit: false } },
+          inserted: { isVisible: { list: true, show: true, edit: false } },
+          errors: { isVisible: { list: true, show: true, edit: false } },
+          accumulated: { isVisible: { list: true, show: true, edit: false } },
+        },
+        actions: {
+          new: { isAccessible: false },
+          edit: { isAccessible: false },
+          delete: { isAccessible: false },
+        },
+      },
+    },
   ],
   branding: {
     companyName: 'CLI Hub',
@@ -220,6 +248,7 @@ const adminJs = new AdminJS({
         CliTool: 'CLI Tools',
         Category: 'Categories',
         User: 'Users',
+        DiscoveryRun: 'Discovery Runs',
       },
       messages: {
         loginWelcome: 'CLI Hub — Admin Panel',
@@ -247,6 +276,17 @@ const adminJs = new AdminJS({
           createdAt: 'Joined At',
           updatedAt: 'Updated At',
         },
+        DiscoveryRun: {
+          triggeredBy: 'Triggered By',
+          candidates: 'Candidates',
+          inserted: 'Inserted',
+          errors: 'Errors',
+          accumulated: 'ML Accumulated',
+          duration: 'Duration (ms)',
+          startedAt: 'Started',
+          completedAt: 'Completed',
+          log: 'Log',
+        },
       },
     },
   },
@@ -254,6 +294,11 @@ const adminJs = new AdminJS({
     handler: async () => {
       const { getSystemStats } = await import('./services/admin.service.js');
       const stats = await getSystemStats();
+
+      const DiscoveryRun = mongoose.model('DiscoveryRun');
+      const lastRun = await DiscoveryRun.findOne().sort({ startedAt: -1 }).select('status candidates inserted errors duration startedAt').lean();
+      const runningRun = await DiscoveryRun.findOne({ status: 'running' }).select('_id startedAt').lean();
+
       return {
         totalTools: stats.stats.tools.total,
         activeTools: stats.stats.tools.active,
@@ -261,20 +306,29 @@ const adminJs = new AdminJS({
         totalCategories: stats.stats.categories.total,
         dbStatus: stats.system.database,
         uptime: stats.system.uptime,
+        discovery: {
+          isRunning: !!runningRun,
+          lastRun: lastRun || null,
+        },
       };
     },
   },
 });
+
+const DashboardComponent = adminJs.componentLoader.add('AdminDashboard', './admin/AdminDashboard.jsx');
+adminJs.options.dashboard.component = DashboardComponent;
 
 const adminJsSession = {
   secret: process.env.ADMINJS_SESSION_SECRET || 'change-me-session-secret',
   resave: true,
   saveUninitialized: true,
   store: MongoStore.create({
-    clientPromise: mongoose.connection.asPromise().then(() => mongoose.connection.getClient()),
+    mongoUrl: process.env.MONGO_URI,
     collectionName: 'adminSessions',
   }),
 };
+
+await adminJs.initialize();
 
 const adminJsRouter = AdminJSExpress.buildAuthenticatedRouter(
   adminJs,
@@ -299,6 +353,38 @@ adminJsRouter.use((err, req, res, next) => {
 });
 
 app.use(adminJs.options.rootPath, adminJsRouter);
+
+// Custom AdminJS API routes (protected by AdminJS session auth)
+// Using GET with action param to avoid express-formidable parsing issues on POST
+adminJsRouter.get('/api/discovery/start', async (req, res, next) => {
+  try {
+    const { startDiscovery } = await import('./services/discovery.service.js');
+    const run = await startDiscovery(null);
+    res.json({ run });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+adminJsRouter.get('/api/discovery/logs', async (req, res, next) => {
+  try {
+    const { getActiveRunLogs, getCurrentRunId } = await import('./services/discovery.service.js');
+    const [logs, runId] = await Promise.all([getActiveRunLogs(), getCurrentRunId()]);
+    res.json({ logs, runId: runId ? runId.toString() : null });
+  } catch (err) {
+    next(err);
+  }
+});
+
+adminJsRouter.get('/api/discovery/history', async (req, res, next) => {
+  try {
+    const { getRunHistory } = await import('./services/discovery.service.js');
+    const history = await getRunHistory();
+    res.json({ history });
+  } catch (err) {
+    next(err);
+  }
+});
 
 // Clerk Auth Middleware
 app.use(clerkMiddleware());
