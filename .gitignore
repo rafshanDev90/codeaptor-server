@@ -7,4 +7,5 @@ seed-categories.js
 controllers/cache-test.controller.js
 services/cache-test.service.js
 .adminjs/bundle.js
+adminjs-tmp/
 scripts/load-test.mjs

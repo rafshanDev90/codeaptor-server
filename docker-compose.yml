@@ -24,6 +24,7 @@ services:
       - TYPESENSE_PORT=8108
       - TYPESENSE_PROTOCOL=http
       - TYPESENSE_API_KEY=xyz123abc456def789
+      - ADMIN_JS_TMP_DIR=adminjs-tmp
     ports:
       - "3000:3000"
 

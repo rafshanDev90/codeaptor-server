@@ -1,6 +1,7 @@
 node_modules
 .env
 .adminjs
+adminjs-tmp
 .git
 .gitignore
 *.md
