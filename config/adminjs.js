@@ -1,8 +1,13 @@
+import path from 'path';
+import { fileURLToPath } from 'url';
 import AdminJS from 'adminjs';
 import AdminJSExpress from '@adminjs/express';
 import * as AdminJSMongoose from '@adminjs/mongoose';
 import MongoStore from 'connect-mongo';
 import mongoose from 'mongoose';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 AdminJS.registerAdapter(AdminJSMongoose);
 
@@ -158,7 +163,7 @@ const adminJs = new AdminJS({
   },
 });
 
-const DashboardComponent = adminJs.componentLoader.add('AdminDashboard', '../admin/AdminDashboard.jsx');
+const DashboardComponent = adminJs.componentLoader.add('AdminDashboard', path.join(__dirname, '../admin/AdminDashboard.jsx'));
 adminJs.options.dashboard.component = DashboardComponent;
 
 await adminJs.initialize();
