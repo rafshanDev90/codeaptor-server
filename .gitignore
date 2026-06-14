@@ -9,3 +9,4 @@ services/cache-test.service.js
 .adminjs/bundle.js
 adminjs-tmp/
 scripts/load-test.mjs
+docker-viva-questions.md

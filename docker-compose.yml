@@ -25,6 +25,8 @@ services:
       - TYPESENSE_PROTOCOL=http
       - TYPESENSE_API_KEY=xyz123abc456def789
       - ADMIN_JS_TMP_DIR=adminjs-tmp
+      - ADMINJS_ADMIN_EMAIL=${ADMINJS_ADMIN_EMAIL}
+      - ADMINJS_ADMIN_PASSWORD=${ADMINJS_ADMIN_PASSWORD}
     ports:
       - "3000:3000"
 
