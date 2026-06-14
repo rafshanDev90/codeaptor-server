@@ -32,7 +32,7 @@ async function warmCache() {
 
 // Connect to Database
 logger.info('Attempting to connect to MongoDB...');
-mongoose.connect(MONGO_URI)
+mongoose.connect(MONGO_URI, { maxPoolSize: 300 })
   .then(async () => {
     logger.info('Connected to MongoDB successfully.');
     
